@@ -1,0 +1,134 @@
+---
+title: "Student Clustering using DBSCN"
+output: html_notebook
+---
+
+## Data preprocessing 
+```{r}
+library(readxl)
+library(dplyr)
+
+# stack 3 files into one
+df1 <- read_excel('Fall 2021 English 106.xlsx')
+df2 <- read_excel('Fall 2021 English 107.xlsx')
+df3 <- read_excel('Fall 2021 English 108.xlsx')
+df <- rbind(df1, df2, df3)
+
+# only keep the colns we want
+df <- df[, c('ID','Acad Level','College','Birth Country Code',
+             'TOEFL COMPI','IELTS Overall Band Score',
+             'DUOLINGO English','CEPT Total')]
+
+# simplify column name
+df <- df %>% rename(Acad = 'Acad Level', 
+                    BCC = 'Birth Country Code', 
+                    TOEFL = 'TOEFL COMPI', 
+                    IELTS = 'IELTS Overall Band Score', 
+                    DUOLINGO = 'DUOLINGO English', 
+                    CEPT = 'CEPT Total')
+
+# normalize scores
+df$TOEFL <- df$TOEFL / 120
+df$IELTS <- df$IELTS / 9
+df$DUOLINGO <- df$DUOLINGO / 160
+df$CEPT <- df$CEPT / 150
+
+# get average score as a new col
+df$score <- rowMeans(df[, c("TOEFL", "IELTS", "DUOLINGO", "CEPT")], na.rm = TRUE)
+df <- df[, c('ID','Acad','College','BCC', 'score')]
+df <- na.omit(df)
+df
+
+# convert string to number for computation
+df_feature <- df %>%
+  mutate(across(c(Acad, College, BCC), as.factor)) %>%
+  mutate(across(c(Acad, College, BCC), as.numeric))
+df_feature <- df_feature[, c("Acad", "College", "BCC", "score")]
+df_feature
+```
+## K means ++
+```{r}
+set.seed(42) # fix random
+kmeans_result <- kmeans(df_feature, centers = 3, nstart = 25, algorithm = "Lloyd", iter.max = 20)
+
+# create a new colomn to see which cluster the student is in
+df$k_cluster <- kmeans_result$cluster
+df
+```
+
+## DBSCAN
+```{r}
+# install.packages("dbscan")
+library(dbscan)
+
+result <- dbscan(df_feature, eps = 3, minPts = 8)
+df$d_cluster <- result$cluster
+df
+
+```
+## view country-score
+```{r}
+library(ggplot2)
+ggplot(df, aes(x = BCC, y = score, color = as.factor(d_cluster))) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "country-score DBSCAN",
+       color = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+library(ggplot2)
+ggplot(df, aes(x = BCC, y = score, color = as.factor(k_cluster))) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "country-score K means ++",
+       color = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+## view acad-score
+```{r}
+ggplot(df, aes(x = Acad, y = score, color = as.factor(d_cluster))) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "acad-score DBSCAN",
+       color = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+library(ggplot2)
+ggplot(df, aes(x = Acad, y = score, color = as.factor(k_cluster))) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "acad-score K means ++",
+       color = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+## view college-score
+```{r}
+ggplot(df, aes(x = College, y = score, color = as.factor(d_cluster))) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "college-score DBSCAN",
+       color = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+library(ggplot2)
+ggplot(df, aes(x = College, y = score, color = as.factor(k_cluster))) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "college-score K means ++",
+       color = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+## view score in cluster
+```{r}
+ggplot(df, aes(x = as.factor(d_cluster), y = score, fill = as.factor(d_cluster))) +
+  geom_boxplot() +
+  labs(title = "Distribution of scores by DBSCAN cluster", x = "Cluster") +
+  theme_minimal() +
+  scale_fill_discrete(name = "DBSCN Cluster")
+
+ggplot(df, aes(x = as.factor(k_cluster), y = score, fill = as.factor(k_cluster))) +
+  geom_boxplot() +
+  labs(title = "Distribution of scores by K means ++ cluster", x = "Cluster") +
+  theme_minimal() +
+  scale_fill_discrete(name = "K means ++ Cluster")
+```
